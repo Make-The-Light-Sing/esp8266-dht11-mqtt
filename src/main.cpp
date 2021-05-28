@@ -2,14 +2,26 @@
 #include <DHT.h>
 #include <PubSubClient.h>
 #include <ESP8266WiFi.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
 #include "config-env.h"
 
 #define DHTPIN 2
 #define DHTTYPE DHT11
+//#define DEBUG
+
+#define NTP_OFFSET   0      // In seconds
+#define NTP_INTERVAL 60 * 1000    // In miliseconds
+#define NTP_ADDRESS  "europe.pool.ntp.org"
+
+#define SENSOR_ID "OFFICE_#1"
 
 DHT dht(DHTPIN, DHTTYPE);
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, NTP_ADDRESS, NTP_OFFSET, NTP_INTERVAL);
 
 void setup_wifi();
 void setup_mqtt();
@@ -23,6 +35,8 @@ void setup() {
   setup_wifi();
   setup_mqtt();
 
+  timeClient.begin();
+
   #ifdef DEBUG
     Serial.println("Setup completed...");
   #endif
@@ -33,7 +47,7 @@ void loop() {
     reconnect();
   }
   client.loop();
-
+  timeClient.update();
 
   float h = dht.readHumidity();
   float t = dht.readTemperature();
@@ -46,17 +60,35 @@ void loop() {
     Serial.println(F("°C"));
     Serial.print(F("MQTT Satus: "));
     Serial.println(client.state());
+    Serial.print(F("Time: "));
+    Serial.println(timeClient.getEpochTime());
   #endif
 
   char tempString[10];
+  char json[64];
   dtostrf(t, 4, 2, tempString);
-  client.publish(MQTT_TEMPERATURE_TOPIC, tempString);
+  sprintf(
+    json, 
+    "{\"sensorId\":\"%s\",\"sensor\":\"temperature\",\"value\":%s,\"time\":\"%lu\"}",
+    SENSOR_ID,
+    tempString,
+    timeClient.getEpochTime()
+  );
+
+  client.publish(MQTT_TEMPERATURE_TOPIC, json);
 
   char humidityString[10];
   dtostrf(h, 4, 2, humidityString);
-  client.publish(MQTT_HUMIDITY_TOPIC, humidityString);
+  sprintf(
+    json,
+    "{\"sensorId\":\"%s\",\"sensor\":\"humidity\",\"value\":%s,\"time\":\"%lu\"}",
+    SENSOR_ID,
+    humidityString,
+    timeClient.getEpochTime()
+  );
+  client.publish(MQTT_HUMIDITY_TOPIC, json);
 
-  delay(2000);
+  delay(5000);
 }
 
 void setup_wifi() {
