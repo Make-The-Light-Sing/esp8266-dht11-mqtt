@@ -8,7 +8,7 @@
 
 #define DHTPIN 2
 #define DHTTYPE DHT11
-//#define DEBUG
+#define DEBUG
 
 #define NTP_OFFSET   0      // In seconds
 #define NTP_INTERVAL 60 * 1000    // In miliseconds
@@ -22,6 +22,9 @@ PubSubClient client(espClient);
 
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, NTP_ADDRESS, NTP_OFFSET, NTP_INTERVAL);
+
+float humidity = 0.0;
+float temperature = 0.0;
 
 void setup_wifi();
 void setup_mqtt();
@@ -49,14 +52,25 @@ void loop() {
   client.loop();
   timeClient.update();
 
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
+  //dht.computeHeatIndex
+
+  humidity = dht.readHumidity();
+  while (isnan(humidity)) {
+    delay(100);
+    humidity = dht.readHumidity(true);
+  }
+
+  temperature = dht.readTemperature();
+  while (isnan(humidity)) {
+    delay(100);
+    temperature = dht.readTemperature(true);
+  }
 
   #ifdef DEBUG
     Serial.print(F("Humidity: "));
-    Serial.print(h);
+    Serial.print(humidity);
     Serial.print(F("%  Temperature: "));
-    Serial.print(t);
+    Serial.print(temperature);
     Serial.println(F("°C"));
     Serial.print(F("MQTT Satus: "));
     Serial.println(client.state());
@@ -66,7 +80,7 @@ void loop() {
 
   char tempString[10];
   char json[64];
-  dtostrf(t, 4, 2, tempString);
+  dtostrf(temperature, 4, 2, tempString);
   sprintf(
     json, 
     "{\"sensorId\":\"%s\",\"sensor\":\"temperature\",\"value\":%s,\"time\":\"%lu\"}",
@@ -78,7 +92,7 @@ void loop() {
   client.publish(MQTT_TEMPERATURE_TOPIC, json);
 
   char humidityString[10];
-  dtostrf(h, 4, 2, humidityString);
+  dtostrf(humidity, 4, 2, humidityString);
   sprintf(
     json,
     "{\"sensorId\":\"%s\",\"sensor\":\"humidity\",\"value\":%s,\"time\":\"%lu\"}",
